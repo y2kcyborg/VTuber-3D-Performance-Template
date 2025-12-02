@@ -14,7 +14,11 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     private static Shader s_unityToonShader;
 
-    private static int MainTex = Shader.PropertyToID("_MainTex");
+    private static int PropMainTex = Shader.PropertyToID("_MainTex");
+    private static int PropColor = Shader.PropertyToID("_Color");
+    
+    private static int PropBaseAs1st = Shader.PropertyToID("_Use_BaseAs1st");
+    private static int Prop1stAs2nd = Shader.PropertyToID("_Use_1stAs2nd");
     
     [MenuItem("Window/VRM/ConvertPrefabToUnityToon")]
     public static void ShowExample()
@@ -115,13 +119,21 @@ public class ConvertPrefabToUnityToon : EditorWindow
         var newMat = new Material(s_unityToonShader);
         
         // Let's start with the simplest thing
-        newMat.SetTexture(MainTex, mat.GetTexture(MainTex));
-        newMat.SetTextureOffset(MainTex, mat.GetTextureOffset(MainTex));
-        newMat.SetTextureScale(MainTex, mat.GetTextureScale(MainTex));
+        newMat.SetTexture(PropMainTex, mat.GetTexture(PropMainTex));
+        newMat.SetTextureOffset(PropMainTex, mat.GetTextureOffset(PropMainTex));
+        newMat.SetTextureScale(PropMainTex, mat.GetTextureScale(PropMainTex));
 
-        newMat.SetFloat("_Use_BaseAs1st", 1);
-        newMat.SetFloat("_Use_1stAs2nd", 1);
-    
+        // TODO: check this prop has same effects, there are multiple in Unity Toon with similar names
+        newMat.SetColor(PropColor, mat.GetColor(PropColor));
+
+        // Needed to for tex to be used for all 3 shade levels
+        newMat.SetFloat(PropBaseAs1st, 1);
+        newMat.SetFloat(Prop1stAs2nd, 1);
+
+        float cutoff = mat.GetFloat("_Cutoff");
+        // TODO look at ApplyQueueAndRenderType in UTS3GUI to see how to properly set the mat properties that will drive
+        // blend mode etc
+        
         return newMat;
     }
 }
