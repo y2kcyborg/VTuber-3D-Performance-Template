@@ -57,12 +57,13 @@ public class ConvertPrefabToUnityToon : EditorWindow
         Debug.Log($"Prefab path: '{prefabPath}'");
 
         string newPrefabPath =
-            $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.asset";
+            $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
         Debug.Log($"Converted prefab path: '{newPrefabPath}'");
 
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
         var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+        prefabInstance.name += "_UnityToon";
 
         ConvertMaterials(prefabInstance);
 
@@ -75,16 +76,16 @@ public class ConvertPrefabToUnityToon : EditorWindow
         var renderers = prefabInstance.GetComponentsInChildren<Renderer>();
         foreach (var renderer in renderers)
         {
-            ConvertMaterials(renderer.sharedMaterials);
+            renderer.sharedMaterials = ConvertMaterials(renderer.sharedMaterials);
         }
         var renderersSkinned = prefabInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
         foreach (var renderer in renderersSkinned)
         {
-            ConvertMaterials(renderer.sharedMaterials);
+            renderer.sharedMaterials = ConvertMaterials(renderer.sharedMaterials);
         }
     }
 
-    public void ConvertMaterials(Material[] sharedMaterials)
+    public Material[] ConvertMaterials(Material[] sharedMaterials)
     {
         for (int i = 0; i < sharedMaterials.Length; ++i)
         {
@@ -105,6 +106,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
             
             convertedMats[oldPath] = newMat;
         }
+
+        return sharedMaterials;
     }
     
     public Material ConvertMaterial(Material mat)
@@ -116,6 +119,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         newMat.SetTextureOffset(MainTex, mat.GetTextureOffset(MainTex));
         newMat.SetTextureScale(MainTex, mat.GetTextureScale(MainTex));
 
+        newMat.SetFloat("_Use_BaseAs1st", 1);
+        newMat.SetFloat("_Use_1stAs2nd", 1);
+    
         return newMat;
     }
 }
