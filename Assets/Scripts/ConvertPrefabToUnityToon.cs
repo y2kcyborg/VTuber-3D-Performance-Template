@@ -69,7 +69,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
         prefabInstance.name += "_UnityToon";
 
+        AssetDatabase.StartAssetEditing(); // speeds up when doing lots of asset db operations in a row
         ConvertMaterials(prefabInstance);
+        AssetDatabase.StopAssetEditing();
 
         PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
     }
