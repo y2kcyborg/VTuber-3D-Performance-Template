@@ -1,5 +1,7 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -19,6 +21,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
     
     private static int PropBaseAs1st = Shader.PropertyToID("_Use_BaseAs1st");
     private static int Prop1stAs2nd = Shader.PropertyToID("_Use_1stAs2nd");
+
+    private static int ShaderPropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
     
     [MenuItem("Window/VRM/ConvertPrefabToUnityToon")]
     public static void ShowExample()
@@ -41,83 +45,96 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     public void ConvertPrefab()
     {
+        s_unityToonShader = Shader.Find("Toon");
         var obj = rootVisualElement.Q<ObjectField>().value;
         var gameObject = obj as GameObject;
         if (gameObject == null)
         {
             Debug.LogError($"{obj.name} is not a GameObject!");
-            return;
         }
-
-        s_unityToonShader = Shader.Find("Toon");
-
-        if (PrefabUtility.GetPrefabAssetType(gameObject) == PrefabAssetType.NotAPrefab)
+        else if (PrefabUtility.GetPrefabAssetType(gameObject) == PrefabAssetType.NotAPrefab)
         {
             Debug.LogError($"{obj.name} is not a prefab!");
-            return;
         }
+        else
+        {
+            string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
+            Debug.Log($"Prefab path: '{prefabPath}'");
 
-        string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-        Debug.Log($"Prefab path: '{prefabPath}'");
+            string newPrefabPath =
+                $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
+            Debug.Log($"Converted prefab path: '{newPrefabPath}'");
 
-        string newPrefabPath =
-            $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
-        Debug.Log($"Converted prefab path: '{newPrefabPath}'");
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
-        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+            prefabInstance.name += "_UnityToon";
 
-        var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
-        prefabInstance.name += "_UnityToon";
+            // AssetDatabase.StartAssetEditing(); // speeds up when doing lots of asset db operations in a row
+            EditorCoroutineUtility.StartCoroutine( ConvertMaterialsCoroutine(prefabInstance, newPrefabPath), this );
+            // AssetDatabase.StopAssetEditing();
 
-        AssetDatabase.StartAssetEditing(); // speeds up when doing lots of asset db operations in a row
-        ConvertMaterials(prefabInstance);
-        AssetDatabase.StopAssetEditing();
-
-        PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
+        }
     }
 
-    public void ConvertMaterials(GameObject prefabInstance)
+    // Async not well supported in 2022.3, so let's use Editor Coroutines
+    // Maybe need to look into UniTask or whatever it was called
+    public IEnumerator ConvertMaterialsCoroutine(GameObject prefabInstance, string newPrefabPath)
     {
         convertedMats = new();
         var renderers = prefabInstance.GetComponentsInChildren<Renderer>();
+        var renderersSkinned = prefabInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
+
+        int totalRenderers = renderers.Length + renderersSkinned.Length;
+        int currentIdx = 0;
+        
+        int id = Progress.Start("Converting Materials...");
+        
         foreach (var renderer in renderers)
         {
-            renderer.sharedMaterials = ConvertMaterials(renderer.sharedMaterials);
+            Progress.Report(id, currentIdx, totalRenderers);
+            currentIdx++;
+            Material[] sharedMaterials = renderer.sharedMaterials;
+            for (int i = 0; i < sharedMaterials.Length; ++i)
+            {
+                sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
+                // Force inspector?
+                UnityEditor.Selection.activeObject = sharedMaterials[i];
+                yield return null; // wait a frame
+            }
+            renderer.sharedMaterials = sharedMaterials;
         }
-        var renderersSkinned = prefabInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
         foreach (var renderer in renderersSkinned)
         {
-            renderer.sharedMaterials = ConvertMaterials(renderer.sharedMaterials);
-        }
-    }
-
-    public Material[] ConvertMaterials(Material[] sharedMaterials)
-    {
-        for (int i = 0; i < sharedMaterials.Length; ++i)
-        {
-            var oldMat = sharedMaterials[i];
-            string oldPath = AssetDatabase.GetAssetPath(oldMat);
-
-            if (convertedMats.TryGetValue(oldPath, out Material newValue))
+            Progress.Report(id, currentIdx, totalRenderers);
+            currentIdx++;
+            Material[] sharedMaterials = renderer.sharedMaterials;
+            for (int i = 0; i < sharedMaterials.Length; ++i)
             {
-                sharedMaterials[i] = newValue;
-                continue;
+                sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
+                // Force inspector?
+                UnityEditor.Selection.activeObject = sharedMaterials[i];
+                yield return null; // wait a frame
             }
-
-            string newPath = $"{Path.GetDirectoryName(oldPath)}\\{Path.GetFileNameWithoutExtension(oldPath)}_UnityToon.mat";
-
-            var newMat = ConvertMaterial(oldMat);
-
-            AssetDatabase.CreateAsset(newMat, newPath);
-            
-            convertedMats[oldPath] = newMat;
+            renderer.sharedMaterials = sharedMaterials;
         }
+        
+        PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
 
-        return sharedMaterials;
+        Progress.Remove(id);
     }
-    
+
     public Material ConvertMaterial(Material mat)
     {
+        string oldPath = AssetDatabase.GetAssetPath(mat);
+
+        if (convertedMats.TryGetValue(oldPath, out Material newValue))
+        {
+            return newValue;
+        }
+
+        string newPath = $"{Path.GetDirectoryName(oldPath)}\\{Path.GetFileNameWithoutExtension(oldPath)}_UnityToon.mat";
+
         var newMat = new Material(s_unityToonShader);
         
         // Let's start with the simplest thing
@@ -135,6 +152,35 @@ public class ConvertPrefabToUnityToon : EditorWindow
         float cutoff = mat.GetFloat("_Cutoff");
         // TODO look at ApplyQueueAndRenderType in UTS3GUI to see how to properly set the mat properties that will drive
         // blend mode etc
+        
+        // Auto render queue on; set based on Cutout/Transparent/Opaque mode
+        newMat.SetFloat(ShaderPropAutoRenderQueue, 1);
+        
+        // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
+        // Instead it's setting keywords in OnGUI.
+        
+        // Options:
+        // - Legitimately create an editor window for one frame
+        // - Hackily create something that pretends to be an editor window, hack into UTS3GUI's assembly and namespace
+        // - Copy the logic from UTS3GUI - will execute fast, but be harder to maintain
+        // - Hackily derive from UTS3GUI and provide a ValidateMaterial implementation; Override the shader gui per material.
+        
+        // force material verify so keywords are set before we save it?
+        
+        // string currentCustomEditor = ShaderUtil.GetCurrentCustomEditor(s_unityToonShader);
+        // this.m_CustomShaderGUI = ShaderGUIUtility.CreateShaderGUI(this.m_CustomEditorClassName);
+        
+        // We could put this material editor in the tool window, and iterate through the created materials...ugh,
+        // why did they not correctly implement the gui??
+        // var matEditor = Editor.CreateEditor(newMat);
+        // matEditor.DrawHeader();
+        // matEditor.OnInspectorGUI();
+        
+        // All of the options are very annoying. The GUI is quite convoluted.
+        
+        AssetDatabase.CreateAsset(newMat, newPath);
+        
+        convertedMats[oldPath] = newMat;
         
         return newMat;
     }
