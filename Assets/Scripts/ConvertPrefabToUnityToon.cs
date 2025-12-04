@@ -24,6 +24,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     private static int ShaderPropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
     
+    private MaterialEditor materialEditor;
+    private Material currentMaterial;
+    
     [MenuItem("Window/VRM/ConvertPrefabToUnityToon")]
     public static void ShowExample()
     {
@@ -41,6 +44,51 @@ public class ConvertPrefabToUnityToon : EditorWindow
         root.Add(labelFromUXML);
 
         root.Q<Button>().clicked += () => { ConvertPrefab(); };
+    }
+
+    public void OnGUI()
+    {
+        // TODO Messy, based on example code I found
+        
+        // OnGUI and CreateGUI aren't friends. Move this bit down a little
+        GUILayout.Space(120);
+/*
+        if (currentMaterial != null)
+        {
+            EditorGUI.BeginChangeCheck();
+            
+            currentMaterial = (Material) EditorGUILayout.ObjectField(currentMaterial, typeof(Material), true);
+            
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (materialEditor != null)
+                {
+                    DestroyImmediate(materialEditor);
+                }
+            }
+        }
+*/
+        // GUIStyle bgColor = new GUIStyle();
+       
+        // bgColor.normal.background = previewBackgroundTexture;
+       
+        if (currentMaterial != null)
+        {
+            if (materialEditor != null)
+            {
+                DestroyImmediate(materialEditor);
+            }
+            // I guess we actually do want to create one each frame, but that sucks
+            // TODO check whether we can set materialEditor.target instead on a persistent one
+            materialEditor = (MaterialEditor)Editor.CreateEditor(currentMaterial);
+
+            // materialEditor.OnInteractivePreviewGUI(GUILayoutUtility.GetRect (200,200), bgColor);
+            // Must be expanded for this to work
+            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(materialEditor, true);
+            materialEditor.DrawHeader();
+            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(materialEditor, true);
+            materialEditor.OnInspectorGUI();
+        }
     }
 
     public void ConvertPrefab()
@@ -99,7 +147,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
             {
                 sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
                 // Force inspector?
-                UnityEditor.Selection.activeObject = sharedMaterials[i];
+                // UnityEditor.Selection.activeObject = sharedMaterials[i];
+                currentMaterial = sharedMaterials[i];
                 yield return null; // wait a frame
             }
             renderer.sharedMaterials = sharedMaterials;
@@ -113,12 +162,14 @@ public class ConvertPrefabToUnityToon : EditorWindow
             {
                 sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
                 // Force inspector?
-                UnityEditor.Selection.activeObject = sharedMaterials[i];
+                // UnityEditor.Selection.activeObject = sharedMaterials[i];
+                currentMaterial = sharedMaterials[i]; 
                 yield return null; // wait a frame
             }
             renderer.sharedMaterials = sharedMaterials;
         }
-        
+
+        currentMaterial = null;
         PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
 
         Progress.Remove(id);
