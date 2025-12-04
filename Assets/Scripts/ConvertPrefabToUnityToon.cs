@@ -30,6 +30,11 @@ public class ConvertPrefabToUnityToon : EditorWindow
     private static int PropBlendMode = Shader.PropertyToID("_BlendMode");
     private static int PropCutoff = Shader.PropertyToID("_Cutoff");
     private static int PropCullMode = Shader.PropertyToID("_CullMode");
+    
+    private static int PropIsBaseMapAlphaAsClippingMask = Shader.PropertyToID("_IsBaseMapAlphaAsClippingMask");
+    
+    private static int PropTransparentEnabled = Shader.PropertyToID("_TransparentEnabled");
+    
     // private static int Prop = Shader.PropertyToID("_");
     
     
@@ -231,17 +236,29 @@ public class ConvertPrefabToUnityToon : EditorWindow
         newMat.SetFloat(Prop1stAs2nd, 1);
 
         // Opaque, Cutout, Transparent
-        newMat.SetFloat(PropClippingMode, (float)materialData.renderMode);
+        newMat.SetFloat(PropClippingMode, materialData.renderMode);
+        newMat.SetFloat(PropTransparentEnabled, (materialData.renderMode == 2) ? 1 : 0);
         
         // Auto render queue on; set based on Cutout/Transparent/Opaque mode
         newMat.SetFloat(PropAutoRenderQueue, 1);
         
-        // Cutoff for alpha clip
-        newMat.SetFloat(PropCutoff, materialData.cutoff);
+        // Cutoff for alpha clip; < vs <= discrepancy
+        newMat.SetFloat(PropCutoff, Mathf.Max(materialData.cutoff - 0.001f, 0));
+        
+        // In our case this should always default to 1?
+        newMat.SetFloat(PropIsBaseMapAlphaAsClippingMask, 1);
         
         // NOTE: _BlendMode, _SurfaceType are declared but not used by shader or gui
 
         newMat.SetFloat(PropCullMode, materialData.cullMode);
+        
+        // TODO:
+        // props in the UI:
+        // Transparency On/Off
+        // Clipping Off,On,Clip Transparency
+        // Clipping Level
+        // Transparency Level
+        // Use Base Map Alpha as Clipping Mask (turn this on by default??)
 
         return newMat;
     }
