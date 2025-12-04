@@ -68,9 +68,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
             }
         }
 */
-        // GUIStyle bgColor = new GUIStyle();
        
-        // bgColor.normal.background = previewBackgroundTexture;
+        
        
         if (currentMaterial != null)
         {
@@ -82,12 +81,19 @@ public class ConvertPrefabToUnityToon : EditorWindow
             // TODO check whether we can set materialEditor.target instead on a persistent one
             materialEditor = (MaterialEditor)Editor.CreateEditor(currentMaterial);
 
-            // materialEditor.OnInteractivePreviewGUI(GUILayoutUtility.GetRect (200,200), bgColor);
+            
             // Must be expanded for this to work
-            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(materialEditor, true);
+            // WIP this won't work yet because there must be a PropertyEditor set 
+            // such that PropertyEditor propertyViewer = materialEditor.propertyViewer as PropertyEditor;
+            // and propertyViewer.tracker.activeEditors[0].target as GameObject == our material of interest
+            
+            // I feel like at that point, you might as well open the whole inspector window...
+            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(currentMaterial, true);
             materialEditor.DrawHeader();
-            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(materialEditor, true);
             materialEditor.OnInspectorGUI();
+            // GUIStyle bgColor = new GUIStyle();
+            // bgColor.normal.background = previewBackgroundTexture;
+            // materialEditor.OnInteractivePreviewGUI(GUILayoutUtility.GetRect (200,200), bgColor);
         }
     }
 
@@ -149,6 +155,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
                 // Force inspector?
                 // UnityEditor.Selection.activeObject = sharedMaterials[i];
                 currentMaterial = sharedMaterials[i];
+                Focus(); // grab focus, otherwise we guarantee nothing
                 yield return null; // wait a frame
             }
             renderer.sharedMaterials = sharedMaterials;
@@ -163,7 +170,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
                 sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
                 // Force inspector?
                 // UnityEditor.Selection.activeObject = sharedMaterials[i];
-                currentMaterial = sharedMaterials[i]; 
+                currentMaterial = sharedMaterials[i];
+                Focus(); // grab focus, otherwise we guarantee nothing
                 yield return null; // wait a frame
             }
             renderer.sharedMaterials = sharedMaterials;
@@ -171,7 +179,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
         currentMaterial = null;
         PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
-
+        AssetDatabase.SaveAssets();
         Progress.Remove(id);
     }
 
