@@ -24,8 +24,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     private static int ShaderPropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
     
-    private MaterialEditor materialEditor;
-    private Material currentMaterial;
+    private List<Material> materialsToResave = new();
     
     [MenuItem("Window/VRM/ConvertPrefabToUnityToon")]
     public static void ShowExample()
@@ -48,53 +47,39 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     public void OnGUI()
     {
-        // TODO Messy, based on example code I found
+        // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
+        // Instead it's setting keywords in OnGUI.
         
-        // OnGUI and CreateGUI aren't friends. Move this bit down a little
-        GUILayout.Space(120);
-/*
-        if (currentMaterial != null)
-        {
-            EditorGUI.BeginChangeCheck();
-            
-            currentMaterial = (Material) EditorGUILayout.ObjectField(currentMaterial, typeof(Material), true);
-            
-            if (EditorGUI.EndChangeCheck())
-            {
-                if (materialEditor != null)
-                {
-                    DestroyImmediate(materialEditor);
-                }
-            }
-        }
-*/
-       
-        
-       
-        if (currentMaterial != null)
-        {
-            if (materialEditor != null)
-            {
-                DestroyImmediate(materialEditor);
-            }
-            // I guess we actually do want to create one each frame, but that sucks
-            // TODO check whether we can set materialEditor.target instead on a persistent one
-            materialEditor = (MaterialEditor)Editor.CreateEditor(currentMaterial);
+        // Options:
+        // - Legitimately create an editor window for one frame
+        // - Hackily create something that pretends to be an editor window, hack into UTS3GUI's assembly and namespace
+        // - Copy the logic from UTS3GUI - will execute fast, but be harder to maintain
+        // - Hackily derive from UTS3GUI and provide a ValidateMaterial implementation; Override the shader gui per material.
 
-            
-            // Must be expanded for this to work
-            // WIP this won't work yet because there must be a PropertyEditor set 
-            // such that PropertyEditor propertyViewer = materialEditor.propertyViewer as PropertyEditor;
-            // and propertyViewer.tracker.activeEditors[0].target as GameObject == our material of interest
-            
-            // I feel like at that point, you might as well open the whole inspector window...
-            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(currentMaterial, true);
-            materialEditor.DrawHeader();
-            materialEditor.OnInspectorGUI();
-            // GUIStyle bgColor = new GUIStyle();
-            // bgColor.normal.background = previewBackgroundTexture;
-            // materialEditor.OnInteractivePreviewGUI(GUILayoutUtility.GetRect (200,200), bgColor);
+        // The least bad option is to force grab the focus and force embed an open inspector for the material
+        
+        // This is working correctly if the materials are saved with `_IS_ANGELRING_OFF` in `m_ValidKeywords`.
+        
+        // Draw all the inspectors, open, on top of each other, just to force UTS3GUI.OnGUI to run
+        // Somehow, this works
+        AssetDatabase.StartAssetEditing();
+        if (materialsToResave.Count > 0)
+        {
+            for (int i = 0; i < materialsToResave.Count; ++i)
+            {
+                GUILayout.BeginArea(new Rect (0,120,1920,1080));
+                var mat = materialsToResave[i];
+                var materialEditor = (MaterialEditor)Editor.CreateEditor(mat);
+                // For some reason, this flag has to be set on the material. Not the editor.
+                UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(mat, true);
+                materialEditor.DrawHeader();
+                materialEditor.OnInspectorGUI();
+                GUILayout.EndArea();
+                DestroyImmediate(materialEditor); // Destroy after end of frame
+            }
+            materialsToResave.Clear();
         }
+        AssetDatabase.StopAssetEditing();
     }
 
     public void ConvertPrefab()
@@ -151,16 +136,15 @@ public class ConvertPrefabToUnityToon : EditorWindow
             for (int i = 0; i < sharedMaterials.Length; ++i)
             {
                 sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
-                // Force inspector?
-                // UnityEditor.Selection.activeObject = sharedMaterials[i];
-                currentMaterial = sharedMaterials[i];
-                Focus(); // grab focus, otherwise we guarantee nothing
-                yield return null; // wait a frame
+                materialsToResave.Add(sharedMaterials[i]);
             }
             renderer.sharedMaterials = sharedMaterials;
         }
-      
-        currentMaterial = null;
+
+        Focus();
+        yield return null;
+        
+        // wait a frame
         PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
         AssetDatabase.SaveAssets();
         Progress.Remove(id);
@@ -198,14 +182,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // Auto render queue on; set based on Cutout/Transparent/Opaque mode
         newMat.SetFloat(ShaderPropAutoRenderQueue, 1);
         
-        // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
-        // Instead it's setting keywords in OnGUI.
-        
-        // Options:
-        // - Legitimately create an editor window for one frame
-        // - Hackily create something that pretends to be an editor window, hack into UTS3GUI's assembly and namespace
-        // - Copy the logic from UTS3GUI - will execute fast, but be harder to maintain
-        // - Hackily derive from UTS3GUI and provide a ValidateMaterial implementation; Override the shader gui per material.
+        // Here we need to set a minimal subset of properties, if we pick the right ones then the
+        // shader gui will do the rest
         
         // force material verify so keywords are set before we save it?
         
