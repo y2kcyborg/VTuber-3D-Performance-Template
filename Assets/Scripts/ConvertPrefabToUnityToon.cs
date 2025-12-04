@@ -35,6 +35,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
     
     private static int PropTransparentEnabled = Shader.PropertyToID("_TransparentEnabled");
     
+    private static int PropClippingLevel = Shader.PropertyToID("_Clipping_Level");
+    
     // private static int Prop = Shader.PropertyToID("_");
     
     
@@ -236,14 +238,20 @@ public class ConvertPrefabToUnityToon : EditorWindow
         newMat.SetFloat(Prop1stAs2nd, 1);
 
         // Opaque, Cutout, Transparent
-        newMat.SetFloat(PropClippingMode, materialData.renderMode);
+        // These are annoying...
+        newMat.SetFloat(PropClippingMode, (materialData.renderMode == 0) ? 0 : 2);
         newMat.SetFloat(PropTransparentEnabled, (materialData.renderMode == 2) ? 1 : 0);
         
         // Auto render queue on; set based on Cutout/Transparent/Opaque mode
         newMat.SetFloat(PropAutoRenderQueue, 1);
         
         // Cutoff for alpha clip; < vs <= discrepancy
-        newMat.SetFloat(PropCutoff, Mathf.Max(materialData.cutoff - 0.001f, 0));
+        // newMat.SetFloat(PropCutoff, Mathf.Max(materialData.cutoff - 0.001f, 0));
+        // Actually I think it's something else, and cutoff should stay
+        newMat.SetFloat(PropCutoff, materialData.cutoff);
+        // Why
+        newMat.SetFloat(PropClippingLevel, materialData.cutoff);
+        
         
         // In our case this should always default to 1?
         newMat.SetFloat(PropIsBaseMapAlphaAsClippingMask, 1);
