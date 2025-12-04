@@ -137,9 +137,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
     {
         convertedMats = new();
         var renderers = prefabInstance.GetComponentsInChildren<Renderer>();
-        var renderersSkinned = prefabInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
-
-        int totalRenderers = renderers.Length + renderersSkinned.Length;
+        
+        int totalRenderers = renderers.Length;
         int currentIdx = 0;
         
         int id = Progress.Start("Converting Materials...");
@@ -160,23 +159,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
             }
             renderer.sharedMaterials = sharedMaterials;
         }
-        foreach (var renderer in renderersSkinned)
-        {
-            Progress.Report(id, currentIdx, totalRenderers);
-            currentIdx++;
-            Material[] sharedMaterials = renderer.sharedMaterials;
-            for (int i = 0; i < sharedMaterials.Length; ++i)
-            {
-                sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
-                // Force inspector?
-                // UnityEditor.Selection.activeObject = sharedMaterials[i];
-                currentMaterial = sharedMaterials[i];
-                Focus(); // grab focus, otherwise we guarantee nothing
-                yield return null; // wait a frame
-            }
-            renderer.sharedMaterials = sharedMaterials;
-        }
-
+      
         currentMaterial = null;
         PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, newPrefabPath, InteractionMode.UserAction);
         AssetDatabase.SaveAssets();
