@@ -16,13 +16,22 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     private static Shader s_unityToonShader;
 
+    // Using ID is faster than string.
+    // We could also group these by shader but ugh
     private static int PropMainTex = Shader.PropertyToID("_MainTex");
     private static int PropColor = Shader.PropertyToID("_Color");
     
     private static int PropBaseAs1st = Shader.PropertyToID("_Use_BaseAs1st");
     private static int Prop1stAs2nd = Shader.PropertyToID("_Use_1stAs2nd");
 
-    private static int ShaderPropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
+    private static int PropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
+    private static int PropClippingMode = Shader.PropertyToID("_ClippingMode");
+    
+    private static int PropBlendMode = Shader.PropertyToID("_BlendMode");
+    private static int PropCutoff = Shader.PropertyToID("_Cutoff");
+    private static int PropCullMode = Shader.PropertyToID("_CullMode");
+    // private static int Prop = Shader.PropertyToID("_");
+    
     
     private List<Material> materialsToResave = new();
     
@@ -150,6 +159,94 @@ public class ConvertPrefabToUnityToon : EditorWindow
         Progress.Remove(id);
     }
 
+    // Intermediate representation for the properties we know how to transfer.
+    // Let's see if this grows into an unwieldy representation in itself
+    public struct MaterialData
+    {
+        public Texture mainTex;
+        public Vector2 mainTexOffset;
+        public Vector2 mainTexScale;
+
+        public Color color;
+
+        // Opaque, Cutout, Transparent
+        public float renderMode;
+        
+        // Off, Front, Back
+        public float cullMode;
+
+        public float cutoff;
+    }
+
+    // Parse the properties we know about
+    // TODO register in a map instead
+    public MaterialData ParseMaterial(Material mat)
+    {
+        if (mat.shader.name == "VRM/MToon")
+        {
+            return ParseMaterialMToon0(mat);
+        }
+
+        Debug.LogError($"No handler for material shader type: {mat.shader.name}");
+        return new MaterialData();
+    }
+
+    public MaterialData ParseMaterialMToon0(Material mat)
+    {
+        var data = new MaterialData();
+        
+        data.mainTex = mat.GetTexture(PropMainTex);
+        data.mainTexOffset = mat.GetTextureOffset(PropMainTex);
+        data.mainTexScale = mat.GetTextureScale(PropMainTex);
+
+        data.color = mat.GetColor(PropColor);
+
+        // Enum values match between our RenderMode, MToon BlendMode, and UnityToon ClippingMode 
+        data.renderMode = mat.GetFloat(PropBlendMode);
+
+        data.cutoff = mat.GetFloat(PropCutoff);
+
+        data.cullMode = mat.GetFloat(PropCullMode);
+        
+        return data;
+    }
+
+    public Material CreateUnityToon(MaterialData materialData)
+    {
+        var newMat = new Material(s_unityToonShader);
+        
+        // Here we need to set a minimal subset of properties, if we pick the right ones then the
+        // shader gui will do the rest, after we force it to run in our OnGUI
+        
+        // Let's start with the simplest thing
+        newMat.SetTexture(PropMainTex, materialData.mainTex);
+        newMat.SetTextureOffset(PropMainTex, materialData.mainTexOffset);
+        newMat.SetTextureScale(PropMainTex, materialData.mainTexScale);
+
+        // TODO: check this prop has same effects, there are multiple in Unity Toon with similar names
+        newMat.SetColor(PropColor, materialData.color);
+
+        // Needed to for tex to be used for all 3 shade levels
+        newMat.SetFloat(PropBaseAs1st, 1);
+        newMat.SetFloat(Prop1stAs2nd, 1);
+
+        // Opaque, Cutout, Transparent
+        newMat.SetFloat(PropClippingMode, (float)materialData.renderMode);
+        
+        // Auto render queue on; set based on Cutout/Transparent/Opaque mode
+        newMat.SetFloat(PropAutoRenderQueue, 1);
+        
+        // Cutoff for alpha clip
+        newMat.SetFloat(PropCutoff, materialData.cutoff);
+        
+        // NOTE: _BlendMode, _SurfaceType are declared but not used by shader or gui
+
+        newMat.SetFloat(PropCullMode, materialData.cullMode);
+
+        return newMat;
+    }
+
+    // TODO: consider an intermediate data structure that we can read from VRM shaders and write to UnityToon, etc shaders
     public Material ConvertMaterial(Material mat)
     {
         string oldPath = AssetDatabase.GetAssetPath(mat);
@@ -159,44 +256,11 @@ public class ConvertPrefabToUnityToon : EditorWindow
             return newValue;
         }
 
+        // Extract known properties from known shaders
+        MaterialData materialData = ParseMaterial(mat);
+
+        var newMat = CreateUnityToon( materialData );
         string newPath = $"{Path.GetDirectoryName(oldPath)}\\{Path.GetFileNameWithoutExtension(oldPath)}_UnityToon.mat";
-
-        var newMat = new Material(s_unityToonShader);
-        
-        // Let's start with the simplest thing
-        newMat.SetTexture(PropMainTex, mat.GetTexture(PropMainTex));
-        newMat.SetTextureOffset(PropMainTex, mat.GetTextureOffset(PropMainTex));
-        newMat.SetTextureScale(PropMainTex, mat.GetTextureScale(PropMainTex));
-
-        // TODO: check this prop has same effects, there are multiple in Unity Toon with similar names
-        newMat.SetColor(PropColor, mat.GetColor(PropColor));
-
-        // Needed to for tex to be used for all 3 shade levels
-        newMat.SetFloat(PropBaseAs1st, 1);
-        newMat.SetFloat(Prop1stAs2nd, 1);
-
-        float cutoff = mat.GetFloat("_Cutoff");
-        // TODO look at ApplyQueueAndRenderType in UTS3GUI to see how to properly set the mat properties that will drive
-        // blend mode etc
-        
-        // Auto render queue on; set based on Cutout/Transparent/Opaque mode
-        newMat.SetFloat(ShaderPropAutoRenderQueue, 1);
-        
-        // Here we need to set a minimal subset of properties, if we pick the right ones then the
-        // shader gui will do the rest
-        
-        // force material verify so keywords are set before we save it?
-        
-        // string currentCustomEditor = ShaderUtil.GetCurrentCustomEditor(s_unityToonShader);
-        // this.m_CustomShaderGUI = ShaderGUIUtility.CreateShaderGUI(this.m_CustomEditorClassName);
-        
-        // We could put this material editor in the tool window, and iterate through the created materials...ugh,
-        // why did they not correctly implement the gui??
-        // var matEditor = Editor.CreateEditor(newMat);
-        // matEditor.DrawHeader();
-        // matEditor.OnInspectorGUI();
-        
-        // All of the options are very annoying. The GUI is quite convoluted.
         
         AssetDatabase.CreateAsset(newMat, newPath);
         
