@@ -215,6 +215,10 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
         data.cullMode = mat.GetFloat(PropCullMode);
         
+        // TODO: read MToon0 Shade Color texture
+        
+        // TODO: read MToon0 outline params
+        
         return data;
     }
 
@@ -248,9 +252,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // Cutoff for alpha clip; < vs <= discrepancy
         // newMat.SetFloat(PropCutoff, Mathf.Max(materialData.cutoff - 0.001f, 0));
         // Actually I think it's something else, and cutoff should stay
-        newMat.SetFloat(PropCutoff, materialData.cutoff);
         // Why
-        newMat.SetFloat(PropClippingLevel, materialData.cutoff);
+        newMat.SetFloat(PropClippingLevel, Mathf.Max(materialData.cutoff - 0.001f, 0));
         
         
         // In our case this should always default to 1?
@@ -258,6 +261,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         
         // NOTE: _BlendMode, _SurfaceType are declared but not used by shader or gui
 
+        // TODO: something is very messed up in UnityToon itself, if we have alpha clip on on the body tex and no
+        // alpha clip?
+        
         newMat.SetFloat(PropCullMode, materialData.cullMode);
         
         // TODO:
@@ -267,6 +273,13 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // Clipping Level
         // Transparency Level
         // Use Base Map Alpha as Clipping Mask (turn this on by default??)
+        
+        // TODO: Disable outline by default, it's doing something weird wrt clipping.
+        // It's a pain to enable/disable cross-render-pipeline, see UTS3GUI.GUI_Outline
+        
+        // TODO: okay, looks like MToon handles an alpha-clipped mat with outline just fine,
+        // but UnityToon does not; look into how exactly the render passes are set up.
+        // We have the option of generating additional textures, if that helps
 
         return newMat;
     }
