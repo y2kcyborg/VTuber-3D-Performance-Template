@@ -78,9 +78,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         
         // Draw all the inspectors, open, on top of each other, just to force UTS3GUI.OnGUI to run
         // Somehow, this works
-        AssetDatabase.StartAssetEditing();
         if (materialsToResave.Count > 0)
         {
+            AssetDatabase.StartAssetEditing();
             for (int i = 0; i < materialsToResave.Count; ++i)
             {
                 GUILayout.BeginArea(new Rect (0,120,1920,1080));
@@ -94,8 +94,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
                 DestroyImmediate(materialEditor); // Destroy after end of frame
             }
             materialsToResave.Clear();
+            AssetDatabase.StopAssetEditing();
         }
-        AssetDatabase.StopAssetEditing();
     }
 
     public void ConvertPrefab()
