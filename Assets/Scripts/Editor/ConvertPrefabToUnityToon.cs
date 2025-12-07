@@ -134,6 +134,13 @@ public class ConvertPrefabToUnityToon : EditorWindow
     void IMGUICode()
     {
         var obj = rootVisualElement.Q<ObjectField>().value;
+
+        if (m_unityToonShader == null)
+        {
+            m_unityToonShader = Shader.Find("Toon");
+        }
+
+        m_unityToonShader = (Shader)EditorGUILayout.ObjectField("Toon Shader", m_unityToonShader, typeof(Shader), false);
         
         // If the user passed in a VRM0 asset, unconverted:
         // obj is UnityEngine.DefaultAsset
@@ -210,7 +217,12 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     public void ConvertPrefab()
     {
-        m_unityToonShader ??= Shader.Find("Toon");
+        if (m_unityToonShader == null)
+        {
+            Debug.LogError("Unity toon shader not found!");
+            return;
+        }
+
         var obj = rootVisualElement.Q<ObjectField>().value;
         
         // If the user passed in a VRM0 asset, unconverted:
@@ -221,15 +233,10 @@ public class ConvertPrefabToUnityToon : EditorWindow
         string assetPath = AssetDatabase.GetAssetPath(obj);
         Debug.Log($"Object '{obj.name}' has path '{assetPath}'");
 
-        // TODO this isn't working?? It causes asset to reimport, but the vrmImporter settings are lost...
-
-        return;
         // We've ensured that the asset has been reimported as a VRM10 prefab with URP shaders,
         // now grab it.
-        var gameObject = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+        var gameObject = obj as GameObject;
 
-        // TODO check asset when it's dropped in
-        
         if (gameObject == null)
         {
             Debug.LogError($"'{obj.name}' is not a GameObject!");
@@ -242,24 +249,38 @@ public class ConvertPrefabToUnityToon : EditorWindow
             return;
         }
         
+        // Create required paths and directories
         string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
         Debug.Log($"Prefab path: '{prefabPath}'");
 
+        string prefabDir = Path.GetDirectoryName(prefabPath);
+        string prefabName = $"{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon";
+        
         string newPrefabPath =
-            $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
+            $"{prefabDir}\\{prefabName}.prefab";
         Debug.Log($"Converted prefab path: '{newPrefabPath}'");
-
+        
+        string parentDir = Path.GetDirectoryName(assetPath);
+        string matDirName = $"{prefabName}.Materials";
+        string matDirPath = $"{parentDir}\\{matDirName}";
+        
+        if (!AssetDatabase.IsValidFolder(matDirPath))
+        {
+            AssetDatabase.CreateFolder(parentDir, matDirName);
+        }
+        
+        // Create prefab instance
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
         var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
         prefabInstance.name += "_UnityToon";
 
-        EditorCoroutineUtility.StartCoroutine( ConvertMaterialsCoroutine(prefabInstance, newPrefabPath), this );
+        EditorCoroutineUtility.StartCoroutine( ConvertMaterialsCoroutine(prefabInstance, newPrefabPath, matDirPath), this );
     }
 
     // Async not well supported in 2022.3, so let's use Editor Coroutines
     // Maybe need to look into UniTask or whatever it was called
-    public IEnumerator ConvertMaterialsCoroutine(GameObject prefabInstance, string newPrefabPath)
+    public IEnumerator ConvertMaterialsCoroutine(GameObject prefabInstance, string newPrefabPath, string matDirPath)
     {
         m_convertedMats = new();
         var renderers = prefabInstance.GetComponentsInChildren<Renderer>();
@@ -276,7 +297,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
             Material[] sharedMaterials = renderer.sharedMaterials;
             for (int i = 0; i < sharedMaterials.Length; ++i)
             {
-                sharedMaterials[i] = ConvertMaterial(sharedMaterials[i]);
+                sharedMaterials[i] = ConvertMaterial(matDirPath, sharedMaterials[i]);
                 materialsToResave.Add(sharedMaterials[i]);
             }
             renderer.sharedMaterials = sharedMaterials;
@@ -413,24 +434,26 @@ public class ConvertPrefabToUnityToon : EditorWindow
     }
 
     // TODO: consider an intermediate data structure that we can read from VRM shaders and write to UnityToon, etc shaders
-    public Material ConvertMaterial(Material mat)
+    public Material ConvertMaterial(string destDirPath, Material mat)
     {
         string oldPath = AssetDatabase.GetAssetPath(mat);
-
-        if (m_convertedMats.TryGetValue(oldPath, out Material newValue))
+        string key = $"{oldPath}:{mat.name}";
+        
+        if (m_convertedMats.TryGetValue(key, out Material newValue))
         {
             return newValue;
         }
 
         // Extract known properties from known shaders
         MaterialData materialData = ParseMaterial(mat);
-
+        
         var newMat = CreateUnityToon( materialData );
-        string newPath = $"{Path.GetDirectoryName(oldPath)}\\{Path.GetFileNameWithoutExtension(oldPath)}_UnityToon.mat";
         
-        AssetDatabase.CreateAsset(newMat, newPath);
+        AssetDatabase.CreateAsset(
+            newMat,
+            $"{destDirPath}\\{mat.name}_UnityToon.mat");
         
-        m_convertedMats[oldPath] = newMat;
+        m_convertedMats[key] = newMat;
         
         return newMat;
     }
