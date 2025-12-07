@@ -12,6 +12,8 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.UIElements;
 using UniVRM10;
+using VRM10.MToon10;
+using System.Linq;
 
 public class ConvertPrefabToUnityToon : EditorWindow
 {
@@ -23,27 +25,82 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     private Shader m_unityToonShader;
     private UnityEngine.Rendering.RenderPipelineAsset m_renderPipeline;
-    
+
     // Using ID is faster than string.
     // We could also group these by shader but ugh
-    private static int PropMainTex = Shader.PropertyToID("_MainTex");
-    private static int PropColor = Shader.PropertyToID("_Color");
+    private static int PropUTMainTex = Shader.PropertyToID("_MainTex");
+    private static int PropUTColor = Shader.PropertyToID("_Color");
     
-    private static int PropBaseAs1st = Shader.PropertyToID("_Use_BaseAs1st");
-    private static int Prop1stAs2nd = Shader.PropertyToID("_Use_1stAs2nd");
+    private static int PropUTBaseAs1st = Shader.PropertyToID("_Use_BaseAs1st");
+    private static int PropUT1stAs2nd = Shader.PropertyToID("_Use_1stAs2nd");
 
-    private static int PropAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
-    private static int PropClippingMode = Shader.PropertyToID("_ClippingMode");
+    private static int PropUTAutoRenderQueue = Shader.PropertyToID("_AutoRenderQueue");
+    private static int PropUTClippingMode = Shader.PropertyToID("_ClippingMode");
     
-    private static int PropBlendMode = Shader.PropertyToID("_BlendMode");
-    private static int PropCutoff = Shader.PropertyToID("_Cutoff");
-    private static int PropCullMode = Shader.PropertyToID("_CullMode");
+    private static int PropUTBlendMode = Shader.PropertyToID("_BlendMode");
+    private static int PropUTCutoff = Shader.PropertyToID("_Cutoff");
+    private static int PropUTCullMode = Shader.PropertyToID("_CullMode");
     
-    private static int PropIsBaseMapAlphaAsClippingMask = Shader.PropertyToID("_IsBaseMapAlphaAsClippingMask");
+    private static int PropUTIsBaseMapAlphaAsClippingMask = Shader.PropertyToID("_IsBaseMapAlphaAsClippingMask");
     
-    private static int PropTransparentEnabled = Shader.PropertyToID("_TransparentEnabled");
+    private static int PropUTTransparentEnabled = Shader.PropertyToID("_TransparentEnabled");
     
-    private static int PropClippingLevel = Shader.PropertyToID("_Clipping_Level");
+    private static int PropUTClippingLevel = Shader.PropertyToID("_Clipping_Level");
+
+    // Maybe corresponds to world vs screen?
+    private static int PropUTOutlineMode = Shader.PropertyToID("_OUTLINE");
+    private static int PropUTOutlineWidth = Shader.PropertyToID("_Outline_Width");
+    private static int PropUTOutlineColor = Shader.PropertyToID("_Outline_Color");
+    // private static int PropUT = Shader.PropertyToID("_");
+   
+    private static int PropM10AlphaMode = Shader.PropertyToID("_AlphaMode");
+    private static int PropM10TransparentWithZWrite = Shader.PropertyToID("_TransparentWithZWrite");
+    private static int PropM10AlphaCutoff = Shader.PropertyToID("_Cutoff");
+    private static int PropM10RenderQueueOffsetNumber = Shader.PropertyToID("_RenderQueueOffset");
+    private static int PropM10DoubleSided = Shader.PropertyToID("_DoubleSided");
+
+    private static int PropM10BaseColorFactor = Shader.PropertyToID("_Color");
+    private static int PropM10BaseColorTexture = Shader.PropertyToID("_MainTex");
+    private static int PropM10ShadeColorFactor = Shader.PropertyToID("_ShadeColor");
+    private static int PropM10ShadeColorTexture = Shader.PropertyToID("_ShadeTex");
+    private static int PropM10NormalTexture = Shader.PropertyToID("_BumpMap");
+    private static int PropM10NormalTextureScale = Shader.PropertyToID("_BumpScale");
+    private static int PropM10ShadingShiftFactor = Shader.PropertyToID("_ShadingShiftFactor");
+    private static int PropM10ShadingShiftTexture = Shader.PropertyToID("_ShadingShiftTex");
+    private static int PropM10ShadingShiftTextureScale = Shader.PropertyToID("_ShadingShiftTexScale");
+    private static int PropM10ShadingToonyFactor = Shader.PropertyToID("_ShadingToonyFactor");
+
+    private static int PropM10GiEqualizationFactor = Shader.PropertyToID("_GiEqualization");
+
+    private static int PropM10EmissiveFactor = Shader.PropertyToID("_EmissionColor");
+    private static int PropM10EmissiveTexture = Shader.PropertyToID("_EmissionMap");
+
+    private static int PropM10MatcapColorFactor = Shader.PropertyToID("_MatcapColor");
+    private static int PropM10MatcapTexture = Shader.PropertyToID("_MatcapTex");
+    private static int PropM10ParametricRimColorFactor = Shader.PropertyToID("_RimColor");
+    private static int PropM10ParametricRimFresnelPowerFactor = Shader.PropertyToID("_RimFresnelPower");
+    private static int PropM10ParametricRimLiftFactor = Shader.PropertyToID("_RimLift");
+    private static int PropM10RimMultiplyTexture = Shader.PropertyToID("_RimTex");
+    private static int PropM10RimLightingMixFactor = Shader.PropertyToID("_RimLightingMix");
+
+    private static int PropM10OutlineWidthMode = Shader.PropertyToID("_OutlineWidthMode");
+    private static int PropM10OutlineWidthFactor = Shader.PropertyToID("_OutlineWidth");
+    private static int PropM10OutlineWidthMultiplyTexture = Shader.PropertyToID("_OutlineWidthTex");
+    private static int PropM10OutlineColorFactor = Shader.PropertyToID("_OutlineColor");
+    private static int PropM10OutlineLightingMixFactor = Shader.PropertyToID("_OutlineLightingMix");
+
+    private static int PropM10UvAnimationMaskTexture = Shader.PropertyToID("_UvAnimMaskTex");
+    private static int PropM10UvAnimationScrollXSpeedFactor = Shader.PropertyToID("_UvAnimScrollXSpeed");
+    private static int PropM10UvAnimationScrollYSpeedFactor = Shader.PropertyToID("_UvAnimScrollYSpeed");
+    private static int PropM10UvAnimationRotationSpeedFactor = Shader.PropertyToID("_UvAnimRotationSpeed");
+
+    private static int PropM10UnityCullMode = Shader.PropertyToID("_M_CullMode");
+    private static int PropM10UnitySrcBlend = Shader.PropertyToID("_M_SrcBlend");
+    private static int PropM10UnityDstBlend = Shader.PropertyToID("_M_DstBlend");
+    private static int PropM10UnityZWrite = Shader.PropertyToID("_M_ZWrite");
+    private static int PropM10UnityAlphaToMask = Shader.PropertyToID("_M_AlphaToMask");
+
+    private static int PropM10EditorEditMode = Shader.PropertyToID("_M_EditMode");
     
     // private static int Prop = Shader.PropertyToID("_");
     
@@ -329,88 +386,133 @@ public class ConvertPrefabToUnityToon : EditorWindow
         public float cullMode;
 
         public float cutoff;
+
+        public float outline;
+        public float outlineWidth;
+        public Color outlineColor;
     }
 
     // Parse the properties we know about
     // TODO register in a map instead
     public MaterialData ParseMaterial(Material mat)
     {
-        if (mat.shader.name == "VRM/MToon")
+        if (mat.shader.name == "VRM10/MToon10" || mat.shader.name == "VRM10/Universal Render Pipeline/MToon10")
         {
-            return ParseMaterialMToon0(mat);
+            return ParseMaterialMToon10(mat);
         }
 
         Debug.LogError($"No handler for material shader type: {mat.shader.name}");
         return new MaterialData();
     }
 
-    public MaterialData ParseMaterialMToon0(Material mat)
+    public MaterialData ParseMaterialMToon10(Material mat)
     {
         var data = new MaterialData();
         
-        data.mainTex = mat.GetTexture(PropMainTex);
-        data.mainTexOffset = mat.GetTextureOffset(PropMainTex);
-        data.mainTexScale = mat.GetTextureScale(PropMainTex);
-
-        data.color = mat.GetColor(PropColor);
-
-        // Enum values match between our RenderMode, MToon BlendMode, and UnityToon ClippingMode 
-        data.renderMode = mat.GetFloat(PropBlendMode);
-
-        data.cutoff = mat.GetFloat(PropCutoff);
-
-        data.cullMode = mat.GetFloat(PropCullMode);
+        // TODO why does MToon have reflection over all the shader properties, but still end up accessing them by string name?
         
-        // TODO: read MToon0 Shade Color texture
+        // Some primary properties:
+        // MToon10Prop.AlphaMode, enum matches standard values
+        data.renderMode = mat.GetFloat(PropM10AlphaMode);
+        // MToon10Prop.TransparentWithZWrite
+        // NYI
+        // MToon10Prop.RenderQueueOffsetNumber
+        // NYI
+        // MToon10Prop.DoubleSided
+        data.cullMode = mat.GetFloat(PropM10DoubleSided) > 0 ? 0 : 2;
+        // MToon10Prop.AlphaCutoff
+        data.cutoff = mat.GetFloat(PropM10AlphaCutoff);
         
-        // TODO: read MToon0 outline params
+        // MToon10Prop.BaseColorTexture
+        data.mainTex = mat.GetTexture(PropM10BaseColorTexture);
+        // MToon10Prop.BaseColorFactor
+        data.color = mat.GetColor(PropM10BaseColorFactor);
+        // MToon10Prop.ShadeColorTexture
+        // MToon10Prop.ShadeColorFactor
+        // MToon10Prop.NormalTexture
+        // MToon10Prop.NormalTextureScale
+        // MToon10Prop.ShadingToonyFactor
+        // MToon10Prop.ShadingShiftFactor
+        // MToon10Prop.ShadingShiftTexture
+        // MToon10Prop.ShadingShiftTextureScale
+        // MToon10Prop.GiEqualizationFactor
+        // MToon10Prop.EmissiveTexture
+        // MToon10Prop.EmissiveFactor
+        // MToon10Prop.RimMultiplyTexture
+        // MToon10Prop.RimLightingMixFactor
+        // MToon10Prop.MatcapTexture
+        // MToon10Prop.MatcapColorFactor
+        // MToon10Prop.ParametricRimColorFactor
+        // MToon10Prop.ParametricRimFresnelPowerFactor
+        // MToon10Prop.ParametricRimLiftFactor
+        
+        // MToon10Prop.OutlineWidthMode
+        // Screen width not implemented in Unity Toon?
+        data.outline = mat.GetFloat(PropM10OutlineWidthMode) > 0 ? 1 : 0;
+        
+        // MToon10Prop.OutlineWidthMultiplyTexture
+        // MToon10Prop.OutlineWidthFactor
+        data.outlineWidth = mat.GetFloat(PropM10OutlineWidthFactor);
+        // MToon10Prop.OutlineColorFactor
+        data.outlineColor = mat.GetColor(PropM10OutlineColorFactor);
+        // MToon10Prop.OutlineLightingMixFactor
+        
+        // MToon10Prop.UvAnimationMaskTexture
+        // MToon10Prop.UvAnimationScrollXSpeedFactor
+        // MToon10Prop.UvAnimationScrollYSpeedFactor
+        // MToon10Prop.UvAnimationRotationSpeedFactor
+        
+        // class MToonValidator used to validate?
+        // Also doesn't implement standard ValidateMaterial...but we know
+        // MToonValidator.Validate is how the validation happens, and
+        // MToonInspector.OnGUI is where the primary properties are edited.
         
         return data;
     }
-
-    public Material CreateUnityToon(MaterialData materialData)
+    
+    public Material CreateUnityToon(MaterialData data)
     {
-        var newMat = new Material(m_unityToonShader);
+        var mat = new Material(m_unityToonShader);
         
         // Here we need to set a minimal subset of properties, if we pick the right ones then the
         // shader gui will do the rest, after we force it to run in our OnGUI
         
         // Let's start with the simplest thing
-        newMat.SetTexture(PropMainTex, materialData.mainTex);
-        newMat.SetTextureOffset(PropMainTex, materialData.mainTexOffset);
-        newMat.SetTextureScale(PropMainTex, materialData.mainTexScale);
+        mat.SetTexture(PropUTMainTex, data.mainTex);
+        mat.SetTextureOffset(PropUTMainTex, data.mainTexOffset);
+        // struct can't have default ctor, have to deal with this somewhere
+        if (data.mainTexScale.x == 0) { data.mainTexScale.x = 1; }
+        if (data.mainTexScale.y == 0) { data.mainTexScale.y = 1; }
+        mat.SetTextureScale(PropUTMainTex, data.mainTexScale);
 
         // TODO: check this prop has same effects, there are multiple in Unity Toon with similar names
-        newMat.SetColor(PropColor, materialData.color);
+        mat.SetColor(PropUTColor, data.color);
 
         // Needed to for tex to be used for all 3 shade levels
-        newMat.SetFloat(PropBaseAs1st, 1);
-        newMat.SetFloat(Prop1stAs2nd, 1);
+        mat.SetFloat(PropUTBaseAs1st, 1);
+        mat.SetFloat(PropUT1stAs2nd, 1);
 
         // Opaque, Cutout, Transparent
         // These are annoying...
-        newMat.SetFloat(PropClippingMode, (materialData.renderMode == 0) ? 0 : 2);
-        newMat.SetFloat(PropTransparentEnabled, (materialData.renderMode == 2) ? 1 : 0);
+        mat.SetFloat(PropUTClippingMode, (data.renderMode == 0) ? 0 : 2);
+        mat.SetFloat(PropUTTransparentEnabled, (data.renderMode == 2) ? 1 : 0);
         
         // Auto render queue on; set based on Cutout/Transparent/Opaque mode
-        newMat.SetFloat(PropAutoRenderQueue, 1);
+        mat.SetFloat(PropUTAutoRenderQueue, 1);
         
         // Cutoff for alpha clip; < vs <= discrepancy
-        // newMat.SetFloat(PropCutoff, Mathf.Max(materialData.cutoff - 0.001f, 0));
+        // mat.SetFloat(PropUTCutoff, Mathf.Max(data.cutoff - 0.001f, 0));
         // Actually I think it's something else, and cutoff should stay
         // Why
-        newMat.SetFloat(PropClippingLevel, Mathf.Max(materialData.cutoff - 0.001f, 0));
+        mat.SetFloat(PropUTClippingLevel, Mathf.Max(data.cutoff - 0.001f, 0));
         
         
         // In our case this should always default to 1?
-        newMat.SetFloat(PropIsBaseMapAlphaAsClippingMask, 1);
+        mat.SetFloat(PropUTIsBaseMapAlphaAsClippingMask, 1);
         
         // NOTE: _BlendMode, _SurfaceType are declared but not used by shader or gui
-
-        // TODO: something is very messed up in UnityToon itself, if we have alpha clip on on the body tex and no
-        // alpha clip?
         
-        newMat.SetFloat(PropCullMode, materialData.cullMode);
+        mat.SetFloat(PropUTCullMode, data.cullMode);
         
         // TODO:
         // props in the UI:
@@ -419,18 +521,11 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // Clipping Level
         // Transparency Level
         // Use Base Map Alpha as Clipping Mask (turn this on by default??)
-        
-        // TODO:
-        // May need to set material.SetOverrideTag("RenderType", renderType); for opaque/transparent?
-        
-        // TODO: Disable outline by default, it's doing something weird wrt clipping.
-        // It's a pain to enable/disable cross-render-pipeline, see UTS3GUI.GUI_Outline
-        
-        // TODO: okay, looks like MToon handles an alpha-clipped mat with outline just fine,
-        // but UnityToon does not; look into how exactly the render passes are set up.
-        // We have the option of generating additional textures, if that helps
+        mat.SetShaderPassEnabled("SRPDefaultUnlit", data.outline > 0);
+        mat.SetFloat(PropUTOutlineWidth, data.outlineWidth);
+        mat.SetColor(PropUTOutlineColor, data.outlineColor);
 
-        return newMat;
+        return mat;
     }
 
     // TODO: consider an intermediate data structure that we can read from VRM shaders and write to UnityToon, etc shaders
