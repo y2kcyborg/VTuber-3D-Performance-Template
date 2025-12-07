@@ -1,6 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <Style src="project://database/Assets/Scripts/ConvertPrefabToUnityToon.uss?fileID=7433441132597879392&amp;guid=92c50113cf2a7d44e86ad52b0f95288a&amp;type=3#ConvertPrefabToUnityToon" />
-    <ui:Label text="Graphic Design is my passion" class="custom-label" />
-    <uie:ObjectField label="Prefab" type="UnityEngine.GameObject, UnityEngine.CoreModule" name="SourcePrefab" style="height: auto; flex-direction: column;" />
-    <ui:Button text="Do It" parse-escape-sequences="true" display-tooltip-when-elided="true" name="DoConvert" />
-</ui:UXML>

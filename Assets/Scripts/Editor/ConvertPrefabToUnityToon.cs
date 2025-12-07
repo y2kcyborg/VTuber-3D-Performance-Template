@@ -1,21 +1,25 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using UniGLTF;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UniVRM10;
 
 public class ConvertPrefabToUnityToon : EditorWindow
 {
+    // Semi-magical UI Builder member
     [SerializeField]
     private VisualTreeAsset m_VisualTreeAsset = default;
 
-    private Dictionary<string, Material> convertedMats;
+    private Dictionary<string, Material> m_convertedMats;
 
-    private static Shader s_unityToonShader;
-
+    private Shader m_unityToonShader;
+    private UnityEngine.Rendering.RenderPipelineAsset m_renderPipeline;
+    
     // Using ID is faster than string.
     // We could also group these by shader but ugh
     private static int PropMainTex = Shader.PropertyToID("_MainTex");
@@ -100,43 +104,78 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     public void ConvertPrefab()
     {
-        s_unityToonShader = Shader.Find("Toon");
+        m_unityToonShader ??= Shader.Find("Toon");
         var obj = rootVisualElement.Q<ObjectField>().value;
-        var gameObject = obj as GameObject;
+        
+        // If the user passed in a VRM0 asset, unconverted:
+        // obj is UnityEngine.DefaultAsset
+        // VRM0 asset converted, or VRM1:
+        // obj is VRM
+
+        string assetPath = AssetDatabase.GetAssetPath(obj);
+        Debug.Log($"Object '{obj.name}' has path '{assetPath}'");
+
+        AssetImporter importer = AssetImporter.GetAtPath(assetPath);
+        Debug.Log($"Object '{obj.name}' has asset importer '{importer.ToString()}'");
+        var vrmImporter = importer as UniVRM10.VrmScriptedImporter;
+        
+        // Ensure a correct import
+        bool anyChange = false;
+        if (vrmImporter.MigrateToVrm1 == false)
+        {
+            vrmImporter.MigrateToVrm1 = true;
+            anyChange = true;
+        }
+
+        if (vrmImporter.RenderPipeline != ImporterRenderPipelineTypes.UniversalRenderPipeline)
+        {
+            vrmImporter.RenderPipeline = ImporterRenderPipelineTypes.UniversalRenderPipeline;
+            anyChange = true;
+        }
+
+        if (anyChange)
+        {
+            vrmImporter.SaveAndReimport();
+        }
+
+        // We've ensured that the asset has been reimported as a VRM10 prefab with URP shaders,
+        // now grab it.
+        var gameObject = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+
+        // TODO check asset when it's dropped in
+        
         if (gameObject == null)
         {
-            Debug.LogError($"{obj.name} is not a GameObject!");
+            Debug.LogError($"'{obj.name}' is not a GameObject!");
+            return;
         }
-        else if (PrefabUtility.GetPrefabAssetType(gameObject) == PrefabAssetType.NotAPrefab)
+        
+        if (PrefabUtility.GetPrefabAssetType(gameObject) == PrefabAssetType.NotAPrefab)
         {
-            Debug.LogError($"{obj.name} is not a prefab!");
+            Debug.LogError($"'{obj.name}' is not a prefab!");
+            return;
         }
-        else
-        {
-            string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-            Debug.Log($"Prefab path: '{prefabPath}'");
+        
+        string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
+        Debug.Log($"Prefab path: '{prefabPath}'");
 
-            string newPrefabPath =
-                $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
-            Debug.Log($"Converted prefab path: '{newPrefabPath}'");
+        string newPrefabPath =
+            $"{Path.GetDirectoryName(prefabPath)}\\{Path.GetFileNameWithoutExtension(prefabPath)}_UnityToon.prefab";
+        Debug.Log($"Converted prefab path: '{newPrefabPath}'");
 
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
-            var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
-            prefabInstance.name += "_UnityToon";
+        var prefabInstance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+        prefabInstance.name += "_UnityToon";
 
-            // AssetDatabase.StartAssetEditing(); // speeds up when doing lots of asset db operations in a row
-            EditorCoroutineUtility.StartCoroutine( ConvertMaterialsCoroutine(prefabInstance, newPrefabPath), this );
-            // AssetDatabase.StopAssetEditing();
-
-        }
+        EditorCoroutineUtility.StartCoroutine( ConvertMaterialsCoroutine(prefabInstance, newPrefabPath), this );
     }
 
     // Async not well supported in 2022.3, so let's use Editor Coroutines
     // Maybe need to look into UniTask or whatever it was called
     public IEnumerator ConvertMaterialsCoroutine(GameObject prefabInstance, string newPrefabPath)
     {
-        convertedMats = new();
+        m_convertedMats = new();
         var renderers = prefabInstance.GetComponentsInChildren<Renderer>();
         
         int totalRenderers = renderers.Length;
@@ -224,7 +263,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
 
     public Material CreateUnityToon(MaterialData materialData)
     {
-        var newMat = new Material(s_unityToonShader);
+        var newMat = new Material(m_unityToonShader);
         
         // Here we need to set a minimal subset of properties, if we pick the right ones then the
         // shader gui will do the rest, after we force it to run in our OnGUI
@@ -274,6 +313,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // Transparency Level
         // Use Base Map Alpha as Clipping Mask (turn this on by default??)
         
+        // TODO:
+        // May need to set material.SetOverrideTag("RenderType", renderType); for opaque/transparent?
+        
         // TODO: Disable outline by default, it's doing something weird wrt clipping.
         // It's a pain to enable/disable cross-render-pipeline, see UTS3GUI.GUI_Outline
         
@@ -289,7 +331,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
     {
         string oldPath = AssetDatabase.GetAssetPath(mat);
 
-        if (convertedMats.TryGetValue(oldPath, out Material newValue))
+        if (m_convertedMats.TryGetValue(oldPath, out Material newValue))
         {
             return newValue;
         }
@@ -302,7 +344,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
         
         AssetDatabase.CreateAsset(newMat, newPath);
         
-        convertedMats[oldPath] = newMat;
+        m_convertedMats[oldPath] = newMat;
         
         return newMat;
     }
