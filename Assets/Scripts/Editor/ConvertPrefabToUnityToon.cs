@@ -501,28 +501,15 @@ public class ConvertPrefabToUnityToon : EditorWindow
         mat.SetFloat(PropUTAutoRenderQueue, 1);
         
         // Cutoff for alpha clip; < vs <= discrepancy
-        // mat.SetFloat(PropUTCutoff, Mathf.Max(data.cutoff - 0.001f, 0));
-        // Actually I think it's something else, and cutoff should stay
-        // Why
         mat.SetFloat(PropUTClippingLevel, Mathf.Max(data.cutoff - 0.001f, 0));
-        
         
         // In our case this should always default to 1?
         mat.SetFloat(PropUTIsBaseMapAlphaAsClippingMask, 1);
         
-        // NOTE: _BlendMode, _SurfaceType are declared but not used by shader or gui
-        
         mat.SetFloat(PropUTCullMode, data.cullMode);
-        
-        // TODO:
-        // props in the UI:
-        // Transparency On/Off
-        // Clipping Off,On,Clip Transparency
-        // Clipping Level
-        // Transparency Level
-        // Use Base Map Alpha as Clipping Mask (turn this on by default??)
+
         mat.SetShaderPassEnabled("SRPDefaultUnlit", data.outline > 0);
-        mat.SetFloat(PropUTOutlineWidth, data.outlineWidth);
+        mat.SetFloat(PropUTOutlineWidth, data.outlineWidth * 1000);
         mat.SetColor(PropUTOutlineColor, data.outlineColor);
 
         return mat;
