@@ -1,11 +1,15 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using JetBrains.Annotations;
 using UniGLTF;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
+using UnityEditor.Rendering;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UIElements;
 using UniVRM10;
 
@@ -63,10 +67,83 @@ public class ConvertPrefabToUnityToon : EditorWindow
         root.Add(labelFromUXML);
 
         root.Q<Button>().clicked += () => { ConvertPrefab(); };
+        
+        var imguiContainer = new IMGUIContainer(IMGUICode);
+        root.Add(imguiContainer);
     }
 
-    public void OnGUI()
+    private bool ValidateProject()
     {
+      
+        if (GraphicsSettings.currentRenderPipeline is not UniversalRenderPipelineAsset)
+        {
+            CoreEditorUtils.DrawFixMeBox("Invalid project settings:\n- Project must be using URP", EnableURP);
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidateTarget(Object obj)
+    {
+        if (!obj)
+        {
+            return false;
+        }
+        string assetPath = AssetDatabase.GetAssetPath(obj);
+        AssetImporter importer = AssetImporter.GetAtPath(assetPath);
+        var vrmImporter = importer as UniVRM10.VrmScriptedImporter;
+        return ValidateImporter(obj, vrmImporter);
+    }
+
+    private bool ValidateImporter(Object obj, VrmScriptedImporter importer)
+    {
+        if (importer == null)
+        {
+            CoreEditorUtils.DrawHeader("Not a VRM!");
+            return false;
+        }
+        
+        // Implicit: Render pipeline must be URP
+
+        bool validMigrate = (obj is not DefaultAsset) || importer.MigrateToVrm1;
+        bool validVrmPipeline = importer.RenderPipeline !=
+                                ImporterRenderPipelineTypes.BuiltinRenderPipeline;
+        bool validImportSettings = validMigrate && validVrmPipeline;
+        if (!validImportSettings)
+        {
+            string msg = "Invalid VRM import settings:";
+            if (!validMigrate)
+            {
+                msg += "\n- VRM must be migrated to VRM 1.0";
+            }
+            if (!validVrmPipeline)
+            {
+                msg += "\n- VRM must use URP materials";
+            }
+
+            CoreEditorUtils.DrawFixMeBox(msg,
+                () => SetVRMImportSettings(importer));
+            return false;
+        }
+
+        return true;
+    }
+
+    [UsedImplicitly]
+    void IMGUICode()
+    {
+        var obj = rootVisualElement.Q<ObjectField>().value;
+        
+        // If the user passed in a VRM0 asset, unconverted:
+        // obj is UnityEngine.DefaultAsset
+        // VRM0 asset converted, or VRM1:
+        // obj is VRM
+
+        bool valid = ValidateProject() && ValidateTarget(obj);
+
+        rootVisualElement.Q<Button>().SetEnabled( valid );
+        
         // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
         // Instead it's setting keywords in OnGUI.
         
@@ -102,6 +179,35 @@ public class ConvertPrefabToUnityToon : EditorWindow
         }
     }
 
+    private void EnableURP()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:UniversalRenderPipelineAsset");
+        if (guids.Length == 0)
+        {
+            Debug.LogError("No URP assets found!");
+        }
+
+        string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+        Debug.Log($"Choosing '{path}' as URP asset");
+
+        var urp = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(path);
+        GraphicsSettings.defaultRenderPipeline = urp;
+    }
+
+    // Logic based on FilmGrainEditor.cs, haven't seen another good example...
+    private void SetVRMImportSettings(VrmScriptedImporter importer)
+    {
+        var assetPath = importer.assetPath;
+        importer.MigrateToVrm1 = true;
+        importer.RenderPipeline = ImporterRenderPipelineTypes.UniversalRenderPipeline;
+        EditorUtility.SetDirty(importer); // Okay, this is the crucial step that was missing
+        importer.SaveAndReimport();
+        AssetDatabase.Refresh(); // Shouldn't be required...
+        // Restore the field after reimport
+        var obj = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+        rootVisualElement.Q<ObjectField>().value = obj;
+    }
+
     public void ConvertPrefab()
     {
         m_unityToonShader ??= Shader.Find("Toon");
@@ -115,29 +221,9 @@ public class ConvertPrefabToUnityToon : EditorWindow
         string assetPath = AssetDatabase.GetAssetPath(obj);
         Debug.Log($"Object '{obj.name}' has path '{assetPath}'");
 
-        AssetImporter importer = AssetImporter.GetAtPath(assetPath);
-        Debug.Log($"Object '{obj.name}' has asset importer '{importer.ToString()}'");
-        var vrmImporter = importer as UniVRM10.VrmScriptedImporter;
-        
-        // Ensure a correct import
-        bool anyChange = false;
-        if (vrmImporter.MigrateToVrm1 == false)
-        {
-            vrmImporter.MigrateToVrm1 = true;
-            anyChange = true;
-        }
+        // TODO this isn't working?? It causes asset to reimport, but the vrmImporter settings are lost...
 
-        if (vrmImporter.RenderPipeline != ImporterRenderPipelineTypes.UniversalRenderPipeline)
-        {
-            vrmImporter.RenderPipeline = ImporterRenderPipelineTypes.UniversalRenderPipeline;
-            anyChange = true;
-        }
-
-        if (anyChange)
-        {
-            vrmImporter.SaveAndReimport();
-        }
-
+        return;
         // We've ensured that the asset has been reimported as a VRM10 prefab with URP shaders,
         // now grab it.
         var gameObject = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
