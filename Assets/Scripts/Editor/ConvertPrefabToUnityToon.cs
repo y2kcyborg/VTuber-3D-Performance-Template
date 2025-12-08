@@ -390,6 +390,8 @@ public class ConvertPrefabToUnityToon : EditorWindow
         public float outline;
         public float outlineWidth;
         public Color outlineColor;
+
+        public int renderQueueOffset;
     }
 
     // Parse the properties we know about
@@ -417,7 +419,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // MToon10Prop.TransparentWithZWrite
         // NYI
         // MToon10Prop.RenderQueueOffsetNumber
-        // NYI
+        data.renderQueueOffset = mat.GetInt(PropM10RenderQueueOffsetNumber);
         // MToon10Prop.DoubleSided
         data.cullMode = mat.GetFloat(PropM10DoubleSided) > 0 ? 0 : 2;
         // MToon10Prop.AlphaCutoff
@@ -498,7 +500,14 @@ public class ConvertPrefabToUnityToon : EditorWindow
         mat.SetFloat(PropUTTransparentEnabled, (data.renderMode == 2) ? 1 : 0);
         
         // Auto render queue on; set based on Cutout/Transparent/Opaque mode
-        mat.SetFloat(PropUTAutoRenderQueue, 1);
+        // We have to convert a render queue offset to a specified render queue value
+        mat.SetFloat(PropUTAutoRenderQueue, (data.renderQueueOffset == 0) ? 1 : 0);
+        mat.renderQueue = (int)(data.renderMode switch
+        {
+            0 => RenderQueue.Geometry,
+            1 => RenderQueue.AlphaTest,
+            _ => RenderQueue.Transparent 
+        }) + data.renderQueueOffset;
         
         // Cutoff for alpha clip; < vs <= discrepancy
         mat.SetFloat(PropUTClippingLevel, Mathf.Max(data.cutoff - 0.001f, 0));
@@ -511,7 +520,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
         mat.SetShaderPassEnabled("SRPDefaultUnlit", data.outline > 0);
         mat.SetFloat(PropUTOutlineWidth, data.outlineWidth * 1000);
         mat.SetColor(PropUTOutlineColor, data.outlineColor);
-
+        
         return mat;
     }
 
