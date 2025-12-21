@@ -17,10 +17,13 @@ using System.Linq;
 
 public class ConvertPrefabToUnityToon : EditorWindow
 {
-    // Semi-magical UI Builder member
-    [SerializeField]
-    private VisualTreeAsset m_VisualTreeAsset = default;
+    // State tied to inpector UI
 
+    private Object m_sourcePrefab;
+    
+    private bool m_isPrefabValid;
+    
+    // Internal state
     private Dictionary<string, Material> m_convertedMats;
 
     private Shader m_unityToonShader;
@@ -114,19 +117,68 @@ public class ConvertPrefabToUnityToon : EditorWindow
         wnd.titleContent = new GUIContent("ConvertPrefabToUnityToon");
     }
 
-    public void CreateGUI()
+    public void OnGUI()
     {
-        // Each editor window contains a root VisualElement object
-        VisualElement root = rootVisualElement;
-
-        // Instantiate UXML
-        VisualElement labelFromUXML = m_VisualTreeAsset.Instantiate();
-        root.Add(labelFromUXML);
-
-        root.Q<Button>().clicked += () => { ConvertPrefab(); };
+        EditorGUILayout.LabelField("Convert VRM Prefab Material Shaders", EditorStyles.boldLabel);
         
-        var imguiContainer = new IMGUIContainer(IMGUICode);
-        root.Add(imguiContainer);
+        GUILayout.Label("Currently only converts to Unity Toon Shader.");
+        
+        m_sourcePrefab = EditorGUILayout.ObjectField("Source Prefab", m_sourcePrefab, typeof(Object), allowSceneObjects: true);
+        
+        if (m_unityToonShader == null)
+        {
+            m_unityToonShader = Shader.Find("Toon");
+        }
+
+        m_unityToonShader = (Shader)EditorGUILayout.ObjectField("Target Shader", m_unityToonShader, typeof(Shader), false);
+
+        // If the user passed in a VRM0 asset, unconverted:
+        // m_sourcePrefab is UnityEngine.DefaultAsset
+        // VRM0 asset converted, or VRM1:
+        // m_sourcePrefab is VRM
+
+        m_isPrefabValid = ValidateProject() && ValidateTarget(m_sourcePrefab);
+        
+        // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
+        // Instead it's setting keywords in OnGUI.
+        
+        // Options:
+        // - Legitimately create an editor window for one frame
+        // - Hackily create something that pretends to be an editor window, hack into UTS3GUI's assembly and namespace
+        // - Copy the logic from UTS3GUI - will execute fast, but be harder to maintain
+        // - Hackily derive from UTS3GUI and provide a ValidateMaterial implementation; Override the shader gui per material.
+
+        // The least bad option is to force grab the focus and force embed an open inspector for the material
+   
+        if (materialsToResave.Count > 0)
+        {
+            // Draw all the inspectors, open, on top of each other, just to force UTS3GUI.OnGUI to run
+            // Somehow, this works
+            
+            AssetDatabase.StartAssetEditing();
+            for (int i = 0; i < materialsToResave.Count; ++i)
+            {
+                GUILayout.BeginArea(new Rect (0,120,1920,1080));
+                var mat = materialsToResave[i];
+                var materialEditor = (MaterialEditor)Editor.CreateEditor(mat);
+                // For some reason, this flag has to be set on the material. Not the editor.
+                UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(mat, true);
+                materialEditor.DrawHeader();
+                materialEditor.OnInspectorGUI();
+                GUILayout.EndArea();
+                DestroyImmediate(materialEditor); // Destroy after end of frame
+            }
+            materialsToResave.Clear();
+            AssetDatabase.StopAssetEditing();
+        }
+
+        using (new EditorGUI.DisabledScope(!m_isPrefabValid))
+        {
+            if (GUILayout.Button("Convert"))
+            {
+                ConvertPrefab();
+            }
+        }
     }
 
     private bool ValidateProject()
@@ -187,61 +239,6 @@ public class ConvertPrefabToUnityToon : EditorWindow
         return true;
     }
 
-    [UsedImplicitly]
-    void IMGUICode()
-    {
-        var obj = rootVisualElement.Q<ObjectField>().value;
-
-        if (m_unityToonShader == null)
-        {
-            m_unityToonShader = Shader.Find("Toon");
-        }
-
-        m_unityToonShader = (Shader)EditorGUILayout.ObjectField("Toon Shader", m_unityToonShader, typeof(Shader), false);
-        
-        // If the user passed in a VRM0 asset, unconverted:
-        // obj is UnityEngine.DefaultAsset
-        // VRM0 asset converted, or VRM1:
-        // obj is VRM
-
-        bool valid = ValidateProject() && ValidateTarget(obj);
-
-        rootVisualElement.Q<Button>().SetEnabled( valid );
-        
-        // Unity Toon shader gui doesn't implement ShaderGUI.ValidateMaterial!
-        // Instead it's setting keywords in OnGUI.
-        
-        // Options:
-        // - Legitimately create an editor window for one frame
-        // - Hackily create something that pretends to be an editor window, hack into UTS3GUI's assembly and namespace
-        // - Copy the logic from UTS3GUI - will execute fast, but be harder to maintain
-        // - Hackily derive from UTS3GUI and provide a ValidateMaterial implementation; Override the shader gui per material.
-
-        // The least bad option is to force grab the focus and force embed an open inspector for the material
-        
-        // This is working correctly if the materials are saved with `_IS_ANGELRING_OFF` in `m_ValidKeywords`.
-        
-        // Draw all the inspectors, open, on top of each other, just to force UTS3GUI.OnGUI to run
-        // Somehow, this works
-        if (materialsToResave.Count > 0)
-        {
-            AssetDatabase.StartAssetEditing();
-            for (int i = 0; i < materialsToResave.Count; ++i)
-            {
-                GUILayout.BeginArea(new Rect (0,120,1920,1080));
-                var mat = materialsToResave[i];
-                var materialEditor = (MaterialEditor)Editor.CreateEditor(mat);
-                // For some reason, this flag has to be set on the material. Not the editor.
-                UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(mat, true);
-                materialEditor.DrawHeader();
-                materialEditor.OnInspectorGUI();
-                GUILayout.EndArea();
-                DestroyImmediate(materialEditor); // Destroy after end of frame
-            }
-            materialsToResave.Clear();
-            AssetDatabase.StopAssetEditing();
-        }
-    }
 
     private void EnableURP()
     {
@@ -268,8 +265,7 @@ public class ConvertPrefabToUnityToon : EditorWindow
         importer.SaveAndReimport();
         AssetDatabase.Refresh(); // Shouldn't be required...
         // Restore the field after reimport
-        var obj = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
-        rootVisualElement.Q<ObjectField>().value = obj;
+        m_sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
     }
 
     public void ConvertPrefab()
@@ -279,30 +275,28 @@ public class ConvertPrefabToUnityToon : EditorWindow
             Debug.LogError("Unity toon shader not found!");
             return;
         }
-
-        var obj = rootVisualElement.Q<ObjectField>().value;
         
         // If the user passed in a VRM0 asset, unconverted:
-        // obj is UnityEngine.DefaultAsset
+        // m_sourcePrefab is UnityEngine.DefaultAsset
         // VRM0 asset converted, or VRM1:
-        // obj is VRM
+        // m_sourcePrefab is VRM
 
-        string assetPath = AssetDatabase.GetAssetPath(obj);
-        Debug.Log($"Object '{obj.name}' has path '{assetPath}'");
+        string assetPath = AssetDatabase.GetAssetPath(m_sourcePrefab);
+        Debug.Log($"Object '{m_sourcePrefab.name}' has path '{assetPath}'");
 
         // We've ensured that the asset has been reimported as a VRM10 prefab with URP shaders,
         // now grab it.
-        var gameObject = obj as GameObject;
+        var gameObject = m_sourcePrefab as GameObject;
 
         if (gameObject == null)
         {
-            Debug.LogError($"'{obj.name}' is not a GameObject!");
+            Debug.LogError($"'{m_sourcePrefab.name}' is not a GameObject!");
             return;
         }
         
         if (PrefabUtility.GetPrefabAssetType(gameObject) == PrefabAssetType.NotAPrefab)
         {
-            Debug.LogError($"'{obj.name}' is not a prefab!");
+            Debug.LogError($"'{m_sourcePrefab.name}' is not a prefab!");
             return;
         }
         
