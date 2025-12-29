@@ -545,10 +545,13 @@ public class ConvertPrefabToUnityToon : EditorWindow
         // etc.
         
         // Corresponds to internal enum: UnityEditor.Rendering.Toon.UTS3GUI.UTS_ClippingMode
+        // Off: no clipping or transparency
+        // On: use a separate clipping mask for transparency
+        // TransClippingMode: Alpha clip if opaque, alpha blend if transparent
         mat.SetFloat(UnityToonProps.ClippingMode, data.renderMode switch
         {
             MaterialData.RenderMode.Opaque => 0,
-            MaterialData.RenderMode.Cutout => 1,
+            MaterialData.RenderMode.Cutout => 2,
             MaterialData.RenderMode.Transparent => 2,
             _ => 0
         });
